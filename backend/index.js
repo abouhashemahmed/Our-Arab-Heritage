@@ -12,6 +12,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 console.log("🚀 Starting server...");
 console.log("DATABASE_URL:", process.env.DATABASE_URL ? "Loaded ✅" : "Not Found ❌");
 console.log("JWT_SECRET:", process.env.JWT_SECRET ? "Loaded ✅" : "Not Found ❌");
+console.log("🔍 Stripe API Key in Use:", process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 app.use(express.json());
@@ -68,16 +69,31 @@ app.post("/register", async (req, res) => {
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
+        const validRoles = ["BUYER", "SELLER", "ADMIN"]; // Match your Prisma enum
+        const formattedRole = role.toUpperCase();
+        
+        if (!validRoles.includes(formattedRole)) {
+            return res.status(400).json({ error: "Invalid role provided" });
+        }
+        
         const newUser = await prisma.user.create({
-            data: { email, password: hashedPassword, role },
+            data: {
+                email,
+                password: hashedPassword,
+                role: formattedRole, // Ensure role matches enum
+            },
         });
+        
+        
 
         res.json({ success: true, userId: newUser.id });
     } catch (error) {
-        console.error("❌ Registration Error:", error);
+        console.error("❌ Registration Error:", error.message, error.stack);
+        // LOG THE ACTUAL ERROR
         res.status(500).json({ error: "Registration failed" });
     }
 });
+
 
 // ✅ User Login (JWT Authentication)
 app.post("/login", async (req, res) => {
