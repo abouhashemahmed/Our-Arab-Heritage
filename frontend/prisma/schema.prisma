@@ -1,0 +1,31 @@
+// ✅ Correct Prisma Schema File
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ✅ User Model
+model User {
+  id       String   @id @default(uuid())
+  email    String   @unique
+  password String
+  role     String
+  products Product[]
+}
+
+// ✅ Product Model
+model Product {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  price       Float
+  images      String[] // ✅ Array for multiple images
+  sellerId    String
+  createdAt   DateTime @default(now())
+  seller      User     @relation(fields: [sellerId], references: [id])
+}
+
