@@ -188,7 +188,7 @@ app.get("/me", authenticateUser, async (req, res) => {
 app.post("/checkout", async (req, res) => {
     try {
         const { cart } = req.body;
-        console.log("🛍️ Incoming cart data:", cart);
+        console.log("🛒 Incoming cart data:", cart);
 
         if (!cart || cart.length === 0) {
             return res.status(400).json({ error: "Cart is empty" });
@@ -221,6 +221,7 @@ app.post("/checkout", async (req, res) => {
         res.status(500).json({ error: "Failed to create checkout session" });
     }
 });
+
 
 // ✅ Start Server
 const PORT = process.env.PORT || 4000;
