@@ -1,13 +1,8 @@
-import { createContext, useState, useContext, useEffect } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
 
-// ✅ Create Cart Context
 const CartContext = createContext();
 
-// ✅ Custom hook for accessing the cart
-export const useCart = () => useContext(CartContext);
-
-// ✅ Cart Provider Component
-export const CartProvider = ({ children }) => {
+export function CartProvider({ children }) {
   const [cart, setCart] = useState([]);
 
   // ✅ Load cart from localStorage when the app starts
@@ -18,9 +13,7 @@ export const CartProvider = ({ children }) => {
 
   // ✅ Save cart to localStorage whenever it changes
   useEffect(() => {
-    if (cart.length > 0) {
-      localStorage.setItem("cart", JSON.stringify(cart));
-    }
+    localStorage.setItem("cart", JSON.stringify(cart));
   }, [cart]);
 
   // ✅ Add product to cart
@@ -39,9 +32,7 @@ export const CartProvider = ({ children }) => {
         updatedCart = [...prevCart, { ...product, quantity: 1 }];
       }
 
-      localStorage.setItem("cart", JSON.stringify(updatedCart)); // ✅ Save Immediately
       console.log("🛒 Updated Cart:", updatedCart); // ✅ Debugging
-
       return updatedCart;
     });
   };
@@ -50,15 +41,25 @@ export const CartProvider = ({ children }) => {
   const removeFromCart = (id) => {
     setCart((prevCart) => {
       const updatedCart = prevCart.filter((item) => item.id !== id);
-      localStorage.setItem("cart", JSON.stringify(updatedCart)); // ✅ Save Immediately
       return updatedCart;
     });
   };
 
+  // ✅ Clear Cart Function
+  const clearCart = () => {
+    setCart([]); // ✅ Reset cart state
+    localStorage.removeItem("cart"); // ✅ Clear from storage
+  };
+
   return (
-    <CartContext.Provider value={{ cart, addToCart, removeFromCart }}>
+    <CartContext.Provider value={{ cart, setCart, addToCart, removeFromCart, clearCart }}>
       {children}
     </CartContext.Provider>
   );
-};
+}
+
+// ✅ Hook for consuming cart context
+export function useCart() {
+  return useContext(CartContext);
+}
 

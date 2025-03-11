@@ -1,11 +1,12 @@
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
+import Link from "next/link"; // ✅ Import Link for Checkout Button
 import { useCart } from "@/context/CartContext"; // ✅ Import Cart Context
 
 export default function ProductDetails() {
   const router = useRouter();
   const { id } = router.query;
-  const { addToCart } = useCart(); // ✅ Fix: Ensuring useCart() is used correctly
+  const { addToCart } = useCart(); // ✅ Ensuring useCart() is used correctly
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -15,7 +16,8 @@ export default function ProductDetails() {
       if (!id) return; // ✅ Prevents unnecessary fetch calls if `id` is undefined
 
       try {
-        const res = await fetch(`http://localhost:4000/products/${id}`);
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products/${id}`);
+
         if (!res.ok) {
           throw new Error(`Failed to fetch product: ${res.statusText}`);
         }
@@ -68,8 +70,15 @@ export default function ProductDetails() {
         onClick={() => addToCart(product)}
         className="mt-6 bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600"
       >
-        Add to Cart
+        Add to Cart 🛒
       </button>
+
+      {/* ✅ Checkout Button */}
+      <Link href="/checkout">
+        <button className="mt-6 ml-4 bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600">
+          Checkout Now
+        </button>
+      </Link>
     </div>
   );
 }

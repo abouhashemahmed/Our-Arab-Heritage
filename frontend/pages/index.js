@@ -6,7 +6,8 @@ export default function Home() {
   const [products, setProducts] = useState([]);
 
   useEffect(() => {
-    fetch("http://localhost:4000/products", { mode: "cors" })
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/products`, { mode: "cors" })
+
 
       .then(res => {
         if (!res.ok) {

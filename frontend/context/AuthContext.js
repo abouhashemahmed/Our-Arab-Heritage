@@ -22,7 +22,8 @@ export const AuthProvider = ({ children }) => {
 
     if (storedToken) {
         setToken(storedToken);
-        fetch("http://localhost:4000/me", {
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/me`, {
+
             headers: { Authorization: `Bearer ${storedToken}` },
         })
             .then(res => {
