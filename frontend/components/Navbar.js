@@ -1,25 +1,37 @@
 import Link from "next/link";
+import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 
 export default function Navbar() {
-  const { cart } = useCart(); // Get cart items
+  const { user, logout } = useAuth();
+  const { cart } = useCart();
 
   return (
-    <nav className="bg-white shadow-lg p-4 flex justify-between items-center">
-      <Link href="/" className="text-lg font-bold">Our Arab Heritage</Link>
-      
-      {/* Cart Button */}
+    <nav className="flex justify-between items-center p-4 bg-gray-800 text-white">
+      {/* Left: Cart Button */}
       <Link href="/cart">
-        <button className="relative px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
-          🛒 Cart
-          {cart.length > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-2">
-              {cart.length}
-            </span>
-          )}
+        <button className="bg-blue-500 px-4 py-2 rounded-lg">
+          🛒 Cart ({cart.length})
         </button>
       </Link>
+
+      {/* Right: User Login */}
+      {user ? (
+        <div>
+          <span>Welcome, {user.email}</span>
+          <button className="ml-4 bg-red-500 px-3 py-1 rounded-lg" onClick={logout}>
+            Logout
+          </button>
+        </div>
+      ) : (
+        <Link href="/login">
+          <button className="bg-green-500 px-4 py-2 rounded-lg">
+            Login / Sign Up
+          </button>
+        </Link>
+      )}
     </nav>
   );
 }
+
 

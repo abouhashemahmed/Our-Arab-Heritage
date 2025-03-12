@@ -21,74 +21,69 @@ export const AuthProvider = ({ children }) => {
     console.log("🔄 Stored Token:", storedToken);
 
     if (storedToken) {
-        setToken(storedToken);
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/me`, {
-
-            headers: { Authorization: `Bearer ${storedToken}` },
+      setToken(storedToken);
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/me`, {
+        headers: { Authorization: `Bearer ${storedToken}` },
+      })
+        .then(res => {
+          console.log("🔄 /me Response Status:", res.status);
+          return res.json();
         })
-            .then(res => {
-                console.log("🔄 /me Response Status:", res.status);
-                return res.json();
-            })
-            .then(data => {
-                console.log("🔄 /me Response Data:", data);
-                if (data.email) {
-                    setUser(data);
-                } else {
-                    logout();
-                }
-            })
-            .catch((err) => {
-                console.error("❌ Fetch error:", err);
-                logout();
-            });
+        .then(data => {
+          console.log("🔄 /me Response Data:", data);
+          if (data.id) {
+            setUser(data); // ✅ Store full user data
+          } else {
+            logout();
+          }
+        })
+        .catch(err => {
+          console.error("❌ Fetch error:", err);
+          logout();
+        });
     }
-}, []);
-
+  }, []);
 
   // ✅ Login function
   const login = async (email, password) => {
     try {
-        console.log("🟢 Attempting login..."); // ✅ Debugging
+      console.log("🟢 Attempting login...");
 
-        const response = await fetch("http://localhost:4000/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password }),
-        });
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/login`, { // ✅ Use dynamic API URL
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
 
-        const data = await response.json();
-        console.log("🟢 Login Response:", data); // ✅ Debugging
+      const data = await response.json();
+      console.log("🟢 Login Response:", data);
 
-        if (data.token) {
-            console.log("✅ Token received:", data.token);
-            localStorage.setItem("token", data.token);
-            setToken(data.token);
-            console.log("✅ Token saved in localStorage:", localStorage.getItem("token"));
+      if (data.token) {
+        console.log("✅ Token received:", data.token);
+        localStorage.setItem("token", data.token);
+        setToken(data.token);
 
-            // ✅ Set user state properly
-            setUser({ email: data.email, role: data.role });
-            console.log("✅ User state updated:", { email: data.email, role: data.role });
+        // ✅ Store full user data (id, email, role)
+        setUser({ id: data.userId, email: data.email, role: data.role });
 
-            return { success: true };
-        } else {
-            console.log("❌ No token received. Error:", data.error);
-            return { success: false, error: data.error };
-        }
+        return { success: true };
+      } else {
+        console.log("❌ No token received. Error:", data.error);
+        return { success: false, error: data.error };
+      }
     } catch (error) {
-        console.error("❌ Login error:", error);
-        return { success: false, error: "Something went wrong" };
+      console.error("❌ Login error:", error);
+      return { success: false, error: "Something went wrong" };
     }
-};
-
-
-
+  };
 
   // ✅ Logout function
   const logout = () => {
+    console.log("🚪 Logging out...");
     localStorage.removeItem("token");
     setToken(null);
     setUser(null);
+    window.location.href = "/login"; // ✅ Redirect to login page
   };
 
   return (
@@ -97,4 +92,5 @@ export const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   );
 };
+
 
