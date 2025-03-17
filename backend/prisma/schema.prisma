@@ -27,7 +27,10 @@ model Product {
   sellerId    String
   createdAt   DateTime @default(now())
   seller      User     @relation(fields: [sellerId], references: [id])
+  country     String?  // ✅ New optional country field
 }
+
+
 
 enum Role {
   BUYER
