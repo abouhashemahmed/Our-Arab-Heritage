@@ -2,95 +2,93 @@ import { createContext, useState, useContext, useEffect } from "react";
 
 const AuthContext = createContext();
 
-// ✅ Custom Hook for Authentication
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("token") || null;
-    }
-    return null;
-  });
+  const [token, setToken] = useState(null);
 
-  // ✅ Load user from token when the app starts
   useEffect(() => {
-    console.log("🔄 Checking token on app start...");
-    const storedToken = localStorage.getItem("token");
-    console.log("🔄 Stored Token:", storedToken);
-
-    if (storedToken) {
-      setToken(storedToken);
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/me`, {
-        headers: { Authorization: `Bearer ${storedToken}` },
-      })
-        .then(res => {
-          console.log("🔄 /me Response Status:", res.status);
-          return res.json();
+    if (typeof window !== "undefined") {
+      const storedToken = localStorage.getItem("token");
+      if (storedToken) {
+        setToken(storedToken);
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/me`, {
+          headers: { Authorization: `Bearer ${storedToken}` },
         })
-        .then(data => {
-          console.log("🔄 /me Response Data:", data);
-          if (data.id) {
-            setUser(data); // ✅ Store full user data
-          } else {
-            logout();
-          }
-        })
-        .catch(err => {
-          console.error("❌ Fetch error:", err);
-          logout();
-        });
+          .then(res => res.json())
+          .then(data => {
+            if (data.id) {
+              setUser(data);
+            } else {
+              logout();
+            }
+          })
+          .catch(() => logout());
+      }
     }
   }, []);
 
-  // ✅ Login function
   const login = async (email, password) => {
     try {
-      console.log("🟢 Attempting login...");
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/login`, { // ✅ Use dynamic API URL
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
 
       const data = await response.json();
-      console.log("🟢 Login Response:", data);
-
       if (data.token) {
-        console.log("✅ Token received:", data.token);
-        localStorage.setItem("token", data.token);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("token", data.token);
+        }
         setToken(data.token);
-
-        // ✅ Store full user data (id, email, role)
         setUser({ id: data.userId, email: data.email, role: data.role });
-
         return { success: true };
       } else {
-        console.log("❌ No token received. Error:", data.error);
         return { success: false, error: data.error };
       }
     } catch (error) {
-      console.error("❌ Login error:", error);
       return { success: false, error: "Something went wrong" };
     }
   };
 
-  // ✅ Logout function
+  const register = async (email, password, role = "SELLER") => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, role }), // ✅ Ensure role is sent
+      });
+  
+      const data = await response.json();
+  
+      if (!response.ok) {
+        throw new Error(data.error || "Registration failed");
+      }
+  
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  };
+  
+
   const logout = () => {
-    console.log("🚪 Logging out...");
-    localStorage.removeItem("token");
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("token");
+    }
     setToken(null);
     setUser(null);
-    window.location.href = "/login"; // ✅ Redirect to login page
+    window.location.href = "/login";
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
 };
+
 
 

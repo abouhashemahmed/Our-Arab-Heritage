@@ -1,58 +1,65 @@
 import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { useRouter } from "next/router";
+import Link from "next/link";
 
-export default function Login() {
+export default function LoginPage() {
   const { login } = useAuth();
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState(null);
+  const [message, setMessage] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(null);
+    setMessage("");
 
-    console.log("🟢 Attempting login with:", email, password);
     const result = await login(email, password);
 
     if (result.success) {
-      console.log("✅ Login successful! Redirecting...");
-      router.push("/dashboard");
+      setMessage("✅ Login successful!");
+      window.location.href = "/"; // Redirect to homepage after login
     } else {
-      console.log("❌ Login failed:", result.error);
-      setError(result.error);
+      setMessage(`❌ Error: ${result.error}`);
     }
   };
 
   return (
-    <div className="flex items-center justify-center h-screen bg-gray-100">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-sm">
-        <h1 className="text-3xl font-bold mb-6 text-center">Login</h1>
-        {error && <p className="text-red-500 text-center mb-4">{error}</p>}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="email"
-            placeholder="Email"
-            className="w-full p-3 border rounded focus:ring-2 focus:ring-blue-400"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            className="w-full p-3 border rounded focus:ring-2 focus:ring-blue-400"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          <button
-            type="submit"
-            className="w-full bg-blue-500 hover:bg-blue-600 text-white p-3 rounded font-semibold transition"
-          >
-            Login
-          </button>
-        </form>
-      </div>
+    <div className="max-w-lg mx-auto p-6 bg-white rounded-lg shadow-lg">
+      <h1 className="text-2xl font-bold mb-4">Login</h1>
+
+      {message && <p className="mb-4 text-center text-red-500">{message}</p>}
+
+      <form onSubmit={handleSubmit}>
+        <input
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full p-2 border rounded mb-2"
+        />
+
+        <input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="w-full p-2 border rounded mb-2"
+        />
+
+        <button
+          type="submit"
+          className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
+        >
+          Login
+        </button>
+      </form>
+
+      <p className="mt-4 text-center">
+        Don't have an account?{" "}
+        <Link href="/register">
+          <span className="text-blue-500 underline cursor-pointer">Register here</span>
+        </Link>
+      </p>
     </div>
   );
 }
+

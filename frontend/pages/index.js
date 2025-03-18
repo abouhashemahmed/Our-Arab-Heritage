@@ -6,19 +6,36 @@ export default function Home() {
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [country, setCountry] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
+    console.log("📡 API URL:", process.env.NEXT_PUBLIC_API_URL); // ✅ Debugging API URL
+
     async function fetchProducts() {
+      setLoading(true); // ✅ Start loading
+      setError(""); // ✅ Reset error state
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products`, { mode: "cors" });
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products`, {
+          mode: "cors",
+        });
+
+        if (!res.ok) {
+          throw new Error(`Failed to fetch products. Status: ${res.status}`);
+        }
+
         const data = await res.json();
-        console.log("🔍 Debug: API Response →", data);
+        console.log("🔍 API Response →", data);
         setProducts(data);
-        setFilteredProducts(data); // Initialize filtered products with all products
+        setFilteredProducts(data);
       } catch (err) {
         console.error("❌ Error fetching products:", err);
+        setError("⚠️ Failed to load products. Please try again.");
+      } finally {
+        setLoading(false); // ✅ Stop loading
       }
     }
+
     fetchProducts();
   }, []);
 
@@ -27,7 +44,9 @@ export default function Home() {
     if (!country) {
       setFilteredProducts(products);
     } else {
-      setFilteredProducts(products.filter(product => product.country === country));
+      setFilteredProducts(
+        products.filter((product) => product.country.toLowerCase() === country.toLowerCase())
+      );
     }
   }, [country, products]);
 
@@ -45,7 +64,9 @@ export default function Home() {
 
       {/* ✅ Country Filter Dropdown */}
       <div className="container mx-auto px-6 py-4 text-center">
-        <label htmlFor="country" className="text-lg font-semibold mr-2">Filter by Country:</label>
+        <label htmlFor="country" className="text-lg font-semibold mr-2">
+          Filter by Country:
+        </label>
         <select
           id="country"
           className="border p-2 rounded-md"
@@ -81,13 +102,23 @@ export default function Home() {
       {/* ✅ Marketplace Section */}
       <div className="container mx-auto px-6 py-10">
         <h2 className="text-4xl font-bold text-center text-gray-800 mb-8">Marketplace</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 mt-8">
-          {filteredProducts.length > 0 ? (
-            filteredProducts.map(product => <ProductCard key={product.id} product={product} />)
-          ) : (
-            <p className="text-center text-gray-500 col-span-full">No products available.</p>
-          )}
-        </div>
+
+        {/* ✅ Loading State */}
+        {loading && <p className="text-center text-gray-500">Loading products...</p>}
+
+        {/* ✅ Error Message */}
+        {error && <p className="text-center text-red-500">{error}</p>}
+
+        {/* ✅ Product Grid */}
+        {!loading && !error && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 mt-8">
+            {filteredProducts.length > 0 ? (
+              filteredProducts.map((product) => <ProductCard key={product.id} product={product} />)
+            ) : (
+              <p className="text-center text-gray-500 col-span-full">No products available.</p>
+            )}
+          </div>
+        )}
       </div>
     </>
   );
