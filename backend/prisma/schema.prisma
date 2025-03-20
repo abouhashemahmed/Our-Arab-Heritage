@@ -8,13 +8,13 @@ datasource db {
 }
 
 model User {
-  id         String    @id @default(uuid())
-  email      String    @unique
+  id         String   @id @default(uuid())
+  email      String   @unique
   password   String
   role       Role
-  proSeller  Boolean   @default(false)
-  membership Boolean   @default(false)
-  createdAt  DateTime  @default(now())
+  proSeller  Boolean  @default(false) // ✅ Add back if needed
+  membership Boolean  @default(false) // ✅ Add back if needed
+  createdAt  DateTime @default(now()) // ✅ Add back if needed
   products   Product[]
 }
 
@@ -23,17 +23,17 @@ model Product {
   title       String
   description String
   price       Float
+  country     String
   images      String[]
-  sellerId    String
-  createdAt   DateTime @default(now())
   seller      User     @relation(fields: [sellerId], references: [id])
-  country     String?  // ✅ New optional country field
+  sellerId    String
+  createdAt   DateTime @default(now()) // ✅ Add back if needed
 }
-
 
 
 enum Role {
-  BUYER
+  BUYER 
   SELLER
   ADMIN
 }
+
