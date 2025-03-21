@@ -193,11 +193,12 @@ app.get("/health", async (req, res) => {
 
 
 // ✅ Start Server
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 8080; // 👈 use 8080 instead of 4000
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
 });
+
 
 // ✅ Periodically log that the server is still running (optional)
 setInterval(() => console.log("✅ Server is still running..."), 60000);
