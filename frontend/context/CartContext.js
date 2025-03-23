@@ -1,65 +1,115 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+} from "react";
+import PropTypes from "prop-types";
 
 const CartContext = createContext();
 
 export function CartProvider({ children }) {
   const [cart, setCart] = useState([]);
+  const [initialized, setInitialized] = useState(false);
 
-  // ✅ Load cart from localStorage when the app starts
+  // ✅ Robust localStorage loading
   useEffect(() => {
-    const storedCart = JSON.parse(localStorage.getItem("cart")) || [];
-    setCart(storedCart);
+    try {
+      const storedCart = JSON.parse(localStorage.getItem("cart")) || [];
+      if (Array.isArray(storedCart)) setCart(storedCart);
+    } catch (error) {
+      console.error("Cart loading error:", error);
+      localStorage.removeItem("cart");
+    } finally {
+      setInitialized(true);
+    }
   }, []);
 
-  // ✅ Save cart to localStorage whenever it changes
+  // ✅ Safe localStorage saving
   useEffect(() => {
-    localStorage.setItem("cart", JSON.stringify(cart));
-  }, [cart]);
+    if (!initialized) return;
+    try {
+      localStorage.setItem("cart", JSON.stringify(cart));
+    } catch (error) {
+      console.error("Cart save failed:", error);
+    }
+  }, [cart, initialized]);
 
-  // ✅ Add product to cart
-  const addToCart = (product) => {
-    console.log("🛒 Adding to cart:", product); // ✅ Debugging line
-
+  // ✅ Optimized cart actions
+  const addToCart = useCallback((product, quantity = 1) => {
     setCart((prevCart) => {
-      const existingItem = prevCart.find((item) => item.id === product.id);
-      let updatedCart;
-
-      if (existingItem) {
-        updatedCart = prevCart.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+      const existing = prevCart.find((item) => item.id === product.id);
+      if (existing) {
+        return prevCart.map((item) =>
+          item.id === product.id
+            ? { ...item, quantity: item.quantity + quantity }
+            : item
         );
-      } else {
-        updatedCart = [...prevCart, { ...product, quantity: 1 }];
       }
-
-      console.log("🛒 Updated Cart:", updatedCart); // ✅ Debugging
-      return updatedCart;
+      return [...prevCart, { ...product, quantity }];
     });
-  };
+  }, []);
 
-  // ✅ Remove product from cart
-  const removeFromCart = (id) => {
-    setCart((prevCart) => {
-      const updatedCart = prevCart.filter((item) => item.id !== id);
-      return updatedCart;
-    });
-  };
+  const removeFromCart = useCallback((id) => {
+    setCart((prevCart) => prevCart.filter((item) => item.id !== id));
+  }, []);
 
-  // ✅ Clear Cart Function
-  const clearCart = () => {
-    setCart([]); // ✅ Reset cart state
-    localStorage.removeItem("cart"); // ✅ Clear from storage
-  };
+  const updateQuantity = useCallback((id, newQuantity) => {
+    setCart((prevCart) =>
+      prevCart.map((item) =>
+        item.id === id
+          ? { ...item, quantity: Math.max(1, newQuantity) }
+          : item
+      )
+    );
+  }, []);
+
+  const clearCart = useCallback(() => {
+    setCart([]);
+    localStorage.removeItem("cart");
+  }, []);
+
+  // ✅ Bulletproof derived values
+  const contextValue = useMemo(() => {
+    const cartTotal = cart.reduce((sum, item) => {
+      const price = Number(item.price) || 0;
+      const quantity = Number(item.quantity) || 0;
+      return sum + price * quantity;
+    }, 0);
+
+    const cartItemCount = cart.reduce((sum, item) => {
+      const quantity = Number(item.quantity) || 0;
+      return sum + quantity;
+    }, 0);
+
+    return {
+      cart,
+      addToCart,
+      removeFromCart,
+      updateQuantity,
+      clearCart,
+      cartTotal: Number(cartTotal.toFixed(2)), // Ensures 2 decimal places
+      cartItemCount,
+    };
+  }, [cart, addToCart, removeFromCart, updateQuantity, clearCart]);
 
   return (
-    <CartContext.Provider value={{ cart, setCart, addToCart, removeFromCart, clearCart }}>
+    <CartContext.Provider value={contextValue}>
       {children}
     </CartContext.Provider>
   );
 }
 
-// ✅ Hook for consuming cart context
-export function useCart() {
-  return useContext(CartContext);
-}
+CartProvider.propTypes = {
+  children: PropTypes.node.isRequired,
+};
 
+export function useCart() {
+  const context = useContext(CartContext);
+  if (!context) {
+    throw new Error("useCart must be used within a CartProvider");
+  }
+  return context;
+}

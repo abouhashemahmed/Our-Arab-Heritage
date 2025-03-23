@@ -1,7 +1,90 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-body {
-    background-color: #f8f9fa;
+
+@layer base {
+  /* Direction-aware CSS variables */
+  :root {
+    --direction: ltr;
+    --text-align-start: left;
+    --text-align-end: right;
   }
-  
+
+  [dir="rtl"] {
+    --direction: rtl;
+    --text-align-start: right;
+    --text-align-end: left;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900 font-sans antialiased;
+    @apply dark:bg-gray-900 dark:text-gray-100;
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    direction: var(--direction);
+    text-align: var(--text-align-start);
+  }
+
+  /* Typography */
+  h1 {
+    @apply text-4xl font-bold mb-4 tracking-tight;
+    text-align: var(--text-align-start);
+  }
+
+  h2 {
+    @apply text-3xl font-semibold mb-3 tracking-tight;
+    text-align: var(--text-align-start);
+  }
+
+  /* Links */
+  a {
+    @apply text-blue-600 hover:text-blue-800 transition-colors decoration-2;
+    @apply dark:text-blue-400 dark:hover:text-blue-300;
+  }
+
+  /* Buttons */
+  button {
+    @apply focus:outline-none focus:ring-2 focus:ring-ourArabGreen focus:ring-offset-2;
+    @apply dark:focus:ring-offset-gray-900;
+  }
+
+  /* Form Elements */
+  input,
+  textarea,
+  select {
+    @apply border border-gray-300 rounded-lg px-4 py-2;
+    @apply focus:outline-none focus:ring-2 focus:ring-ourArabGreen;
+    @apply dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100;
+    @apply transition-all duration-150;
+    text-align: var(--text-align-start);
+  }
+
+  /* RTL-specific alignment for forms */
+  [dir="rtl"] input,
+  [dir="rtl"] textarea,
+  [dir="rtl"] select {
+    text-align: var(--text-align-start);
+  }
+
+  /* Custom RTL-aware utilities */
+  .rtl-grid {
+    direction: rtl;
+  }
+
+  .start-align {
+    text-align: var(--text-align-start);
+  }
+
+  .end-align {
+    text-align: var(--text-align-end);
+  }
+
+  /* Optional prep: If using tailwindcss-logical plugin
+     .ps-* and .pe-* will replace pl/pr to support RTL automatically */
+}
+
+@layer utilities {
+  /* Custom utility: better text wrapping for large headings */
+  .text-balance {
+    text-wrap: balance;
+  }
+}
