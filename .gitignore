@@ -1,2 +1,20 @@
 Our-Arab-Heritage.zip
+# Node.js
+node_modules/
+.next/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+
+# OS-specific
+.DS_Store
+
+# Backups or exports
+*.zip
 
