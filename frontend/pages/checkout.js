@@ -1,97 +1,174 @@
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import Link from "next/link";
+import { loadStripe } from "@stripe/stripe-js";
+import Sentry from "@/lib/sentry";
+
+// Optional: fallback if getCSRFToken not available
+const getCSRFToken = async () => {
+  try {
+    const res = await fetch("/api/auth/csrf");
+    const data = await res.json();
+    return data.csrfToken || "";
+  } catch {
+    return "";
+  }
+};
 
 export default function Checkout() {
-  const { cart, cartTotal = 0 } = useCart(); // Default to 0 if undefined
-  const { user } = useAuth();
-  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  const { cart, cartTotal = 0, clearCart } = useCart();
+  const { user, isAuthenticated } = useAuth();
+  const [status, setStatus] = useState("idle");
   const [error, setError] = useState(null);
 
-  console.log("🛒 Debug: Cart before checkout →", cart);
+  useEffect(() => {
+    if (cart.length === 0) {
+      router.replace("/cart");
+    }
+  }, [cart, router]);
 
   const handleCheckout = async () => {
-    if (!user) {
-      setError("⚠️ You must be logged in to checkout.");
-      return;
-    }
+    if (!isAuthenticated || cart.length === 0) return;
 
-    if (!cart || cart.length === 0) {
-      setError("⚠️ Your cart is empty.");
-      return;
-    }
-
-    setLoading(true);
+    setStatus("loading");
     setError(null);
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/checkout`, {
+      const csrfToken = await getCSRFToken();
+
+      const validation = await fetch("/api/cart/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cart }),
+        body: JSON.stringify({ items: cart }),
       });
 
-      const data = await response.json();
-      console.log("🛠 Debug: Stripe API Response →", data);
-
-      if (data.url) {
-        window.location.href = data.url; // ✅ Redirect to Stripe Checkout
-      } else {
-        throw new Error("Failed to create checkout session.");
+      if (!validation.ok) {
+        const { errors } = await validation.json();
+        throw new Error(errors.join(", "));
       }
-    } catch (error) {
-      console.error("❌ Checkout Error:", error);
-      setError(error.message);
-    } finally {
-      setLoading(false);
+
+      const response = await fetch("/api/checkout/sessions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken,
+        },
+        body: JSON.stringify({
+          line_items: cart.map((item) => ({
+            price_data: {
+              currency: "usd",
+              product_data: { name: item.title },
+              unit_amount: Math.round(item.price * 100),
+            },
+            quantity: item.quantity,
+          })),
+          metadata: { userId: user.id },
+        }),
+      });
+
+      const session = await response.json();
+
+      if (session.error) throw session.error;
+
+      const stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_KEY);
+      await stripe.redirectToCheckout({ sessionId: session.id });
+
+      clearCart();
+      setStatus("success");
+      Sentry.captureMessage("Checkout completed", { user: user.id });
+
+    } catch (err) {
+      setStatus("error");
+      setError(err.message || "An unknown error occurred.");
+      Sentry.captureException(err);
+      console.error("Checkout Error:", err);
     }
   };
 
-  // ✅ If the user is not logged in, show login option
-  if (!user) {
+  if (!isAuthenticated) {
     return (
-      <div className="max-w-lg mx-auto p-6 bg-white rounded-lg shadow-lg text-center">
-        <h1 className="text-3xl font-bold text-red-600">⚠️ Access Denied</h1>
-        <p className="text-gray-700">You must be logged in to proceed to checkout.</p>
+      <section className="max-w-xl mx-auto p-6 bg-white dark:bg-gray-900 rounded shadow text-center mt-10">
+        <h1 className="text-2xl font-semibold text-red-600">⚠️ Access Denied</h1>
+        <p className="text-gray-700 dark:text-gray-300 mt-2">
+          Please log in to proceed to checkout.
+        </p>
         <Link href="/login">
-          <button className="mt-4 bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600">
+          <button className="mt-4 px-6 py-3 bg-green-500 text-white rounded hover:bg-green-600 transition">
             Go to Login
           </button>
         </Link>
-      </div>
+      </section>
+    );
+  }
+
+  if (cart.length === 0) {
+    return (
+      <section className="max-w-xl mx-auto p-6 text-center">
+        <p className="text-gray-600 dark:text-gray-300">🛒 Your cart is empty.</p>
+        <Link href="/">
+          <button className="mt-4 px-6 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+            Continue Shopping
+          </button>
+        </Link>
+      </section>
     );
   }
 
   return (
-    <div className="max-w-lg mx-auto p-6 bg-white rounded-lg shadow-lg text-center">
-      <h1 className="text-3xl font-bold">Checkout</h1>
-      <p className="text-gray-700">You're almost there!</p>
+    <main className="max-w-3xl mx-auto p-6 mt-10 bg-white dark:bg-gray-900 rounded shadow">
+      <h1 className="text-3xl font-bold text-center mb-4">Secure Checkout</h1>
 
-      {error && <p className="text-red-500 mt-2">{error}</p>}
+      {status === "error" && (
+        <div role="alert" className="bg-red-100 text-red-700 p-4 rounded mb-4">
+          <strong>Error:</strong> {error}
+        </div>
+      )}
 
-      <div className="mt-4 p-4 border rounded-lg">
-        <h2 className="text-xl font-semibold">Order Summary</h2>
-        {cart.map((item) => (
-          <div key={item.id} className="flex justify-between py-2">
-            <span>{item.title}</span>
-            <span>${item.price.toFixed(2)}</span>
-          </div>
-        ))}
-        <hr className="my-2" />
-        <p className="text-lg font-bold">Total: ${cartTotal ? cartTotal.toFixed(2) : "0.00"}</p>
-      </div>
+      <section aria-labelledby="order-summary-heading">
+        <h2 id="order-summary-heading" className="text-xl font-semibold mb-3">
+          Order Summary
+        </h2>
+
+        <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+          {cart.map((item) => (
+            <li key={item.id} className="flex justify-between py-3">
+              <div>
+                <p className="font-medium">{item.title}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Qty: {item.quantity}
+                </p>
+              </div>
+              <span>${(item.price * item.quantity).toFixed(2)}</span>
+            </li>
+          ))}
+        </ul>
+
+        <div className="flex justify-between font-bold text-lg mt-4">
+          <span>Total:</span>
+          <span>${cartTotal.toFixed(2)}</span>
+        </div>
+      </section>
 
       <button
         onClick={handleCheckout}
-        className={`mt-6 bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 ${
-          loading ? "opacity-50 cursor-not-allowed" : ""
+        disabled={status === "loading"}
+        className={`w-full mt-6 py-3 px-6 rounded-lg text-white transition ${
+          status === "loading"
+            ? "bg-blue-300 cursor-not-allowed"
+            : "bg-blue-500 hover:bg-blue-600"
         }`}
-        disabled={loading}
+        aria-busy={status === "loading"}
       >
-        {loading ? "Processing..." : "Pay with Stripe"}
+        {status === "loading" ? "Processing..." : "Pay Securely"}
       </button>
-    </div>
+
+      <p className="mt-6 text-sm text-center text-gray-400">
+        🔒 SSL secured & encrypted
+      </p>
+    </main>
   );
 }
 

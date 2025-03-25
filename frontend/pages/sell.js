@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export default function SellPage() {
   const [isClient, setIsClient] = useState(false);
@@ -9,19 +9,15 @@ export default function SellPage() {
   const [image, setImage] = useState(null);
   const [preview, setPreview] = useState(null);
   const [message, setMessage] = useState("");
+  const messageRef = useRef(null);
 
-  // ✅ Fix for SSR (Next.js hydration mismatch)
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
+  useEffect(() => setIsClient(true), []);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
-    if (file && file.type.startsWith("image/")) {
+    if (file?.type.startsWith("image/")) {
       setImage(file);
-      const reader = new FileReader();
-      reader.onloadend = () => setPreview(reader.result);
-      reader.readAsDataURL(file);
+      setPreview(URL.createObjectURL(file)); // ✅ Faster than FileReader
     } else {
       setImage(null);
       setPreview(null);
@@ -33,14 +29,13 @@ export default function SellPage() {
     e.preventDefault();
     setMessage("");
 
-    // ✅ Improved Validation
     if (!title || !description || !price || !country || !image) {
       setMessage("⚠️ Please fill out all fields and select an image.");
       return;
     }
 
-    const formattedPrice = Number(price).toFixed(2);
-    if (isNaN(formattedPrice) || formattedPrice <= 0) {
+    const parsedPrice = parseFloat(price);
+    if (isNaN(parsedPrice) || parsedPrice <= 0) {
       setMessage("❌ Please enter a valid price");
       return;
     }
@@ -49,7 +44,7 @@ export default function SellPage() {
       const formData = new FormData();
       formData.append("title", title);
       formData.append("description", description);
-      formData.append("price", formattedPrice);
+      formData.append("price", parsedPrice.toFixed(2));
       formData.append("country", country);
       formData.append("image", image);
 
@@ -59,63 +54,68 @@ export default function SellPage() {
         return;
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/add-product`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/add-product`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
 
-      const text = await response.text();
+      const text = await res.text();
       try {
         const data = JSON.parse(text);
-        if (response.ok) {
+        if (res.ok) {
           setMessage("✅ Product added successfully!");
-          // ✅ Reset form
-          setTitle("");
-          setDescription("");
-          setPrice("");
-          setCountry("");
-          setImage(null);
-          setPreview(null);
+          setTitle(""); setDescription(""); setPrice(""); setCountry("");
+          setImage(null); setPreview(null);
         } else {
           setMessage(`❌ Error: ${data.error || "Unknown error"}`);
         }
-      } catch (jsonError) {
-        console.error("JSON Parsing Error:", jsonError, "Response:", text);
+      } catch {
         setMessage("❌ Invalid server response");
       }
-    } catch (error) {
-      console.error("Submission Error:", error);
+    } catch (err) {
+      console.error("Submission error:", err);
       setMessage("❌ Failed to submit product. Please try again.");
     }
+
+    setTimeout(() => messageRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
   };
 
-  if (!isClient) return null; // Prevent SSR hydration issues
+  if (!isClient) return null;
 
   return (
     <div className="max-w-lg mx-auto p-6 bg-white rounded-lg shadow-lg mt-8">
       <h1 className="text-2xl font-bold mb-6 text-gray-800">Sell Your Product</h1>
-      
+
       {message && (
-        <div className={`mb-4 p-3 rounded ${message.startsWith("✅") ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
+        <div
+          ref={messageRef}
+          className={`mb-4 p-3 rounded text-sm ${
+            message.startsWith("✅")
+              ? "bg-green-100 text-green-800"
+              : "bg-red-100 text-red-800"
+          }`}
+        >
           {message}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4" aria-label="Sell product form">
         <input
           type="text"
           placeholder="Product Title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          required
+          className="w-full p-3 border rounded-lg"
         />
 
         <textarea
           placeholder="Product Description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          className="w-full p-3 border rounded-lg h-32 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          required
+          className="w-full p-3 border rounded-lg h-32"
         />
 
         <input
@@ -123,54 +123,43 @@ export default function SellPage() {
           placeholder="Price (USD)"
           value={price}
           onChange={(e) => setPrice(e.target.value)}
-          className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          required
+          min="0"
+          step="0.01"
+          className="w-full p-3 border rounded-lg"
         />
 
         <select
           value={country}
           onChange={(e) => setCountry(e.target.value)}
-          className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          required
+          className="w-full p-3 border rounded-lg"
         >
           <option value="">Select Country</option>
-          <option value="Palestine">Palestine</option>
-          <option value="Morocco">Morocco</option>
-          <option value="Egypt">Egypt</option>
-          <option value="Syria">Syria</option>
-          <option value="Lebanon">Lebanon</option>
-          <option value="Saudi Arabia">Saudi Arabia</option>
-          <option value="Jordan">Jordan</option>
-          <option value="Iraq">Iraq</option>
-          <option value="Algeria">Algeria</option>
-          <option value="Tunisia">Tunisia</option>
-          <option value="Libya">Libya</option>
-          <option value="Yemen">Yemen</option>
-          <option value="Kuwait">Kuwait</option>
-          <option value="Oman">Oman</option>
-          <option value="Bahrain">Bahrain</option>
-          <option value="Qatar">Qatar</option>
-          <option value="United Arab Emirates">United Arab Emirates</option>
-          <option value="Sudan">Sudan</option>
-          <option value="Mauritania">Mauritania</option>
-          <option value="Somalia">Somalia</option>
-          <option value="Djibouti">Djibouti</option>
-          <option value="Comoros">Comoros</option>
+          {[
+            "Palestine", "Morocco", "Egypt", "Syria", "Lebanon", "Saudi Arabia", "Jordan", "Iraq",
+            "Algeria", "Tunisia", "Libya", "Yemen", "Kuwait", "Oman", "Bahrain", "Qatar",
+            "United Arab Emirates", "Sudan", "Mauritania", "Somalia", "Djibouti", "Comoros"
+          ].map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
         </select>
 
         <div className="space-y-2">
           <label className="block text-sm font-medium text-gray-700">Product Image</label>
           <input
             type="file"
+            accept="image/*"
             onChange={handleFileChange}
+            required
             className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
           />
           {preview && (
-            <div className="mt-2">
-              <img 
-                src={preview} 
-                alt="Preview" 
-                className="w-32 h-32 object-cover rounded-lg border"
-              />
-            </div>
+            <img
+              src={preview}
+              alt="Preview"
+              className="w-32 h-32 object-cover rounded-lg border mt-2"
+            />
           )}
         </div>
 
@@ -184,3 +173,4 @@ export default function SellPage() {
     </div>
   );
 }
+

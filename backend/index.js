@@ -7,9 +7,43 @@ const { PrismaClient } = require("@prisma/client");
 const multer = require("multer");
 const { v2: cloudinary } = require("cloudinary");
 const streamifier = require("streamifier");
+const rateLimit = require("express-rate-limit");
+const Joi = require("joi");
+const compression = require("compression");
+const helmet = require("helmet");
+const morgan = require("morgan");
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET;
+
+// 🧠 Log App Version
+console.log(`✅ API Starting | Version: ${process.env.npm_package_version}`);
+console.log(`✅ Environment: ${process.env.NODE_ENV || "development"}`);
+
+// 🔒 Validation Schemas
+const registerSchema = Joi.object({
+  email: Joi.string().email().required(),
+  password: Joi.string().min(8).required()
+});
+
+const loginSchema = Joi.object({
+  email: Joi.string().email().required(),
+  password: Joi.string().required()
+});
+
+const productSchema = Joi.object({
+  title: Joi.string().min(3).max(100).required(),
+  description: Joi.string().min(10).max(500).required(),
+  price: Joi.number().min(0.01).required(),
+  country: Joi.string().min(2).max(50).required()
+});
+
+// ⚡ Rate Limiting
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: "Too many requests. Please try again later."
+});
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -17,39 +51,49 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// 🚀 Server Startup Logs
-console.log("✅ DATABASE_URL:", process.env.DATABASE_URL ? "Loaded" : "Not Found ❌");
-console.log("✅ JWT_SECRET:", JWT_SECRET ? "Loaded" : "Not Found ❌");
-console.log("✅ Cloudinary Config:", process.env.CLOUDINARY_CLOUD_NAME ? "Loaded" : "❌ Not Found");
-
 const app = express();
-app.use(express.json());
+
+// 🛠️ Middleware
+app.use(helmet());
+app.use(compression());
+app.use(express.json({ limit: "10kb" }));
+app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 app.use(cors({
   origin: process.env.FRONTEND_URL || "http://localhost:3000",
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE"]
 }));
-app.options('*', cors()); // Add this line
+app.options("*", cors());
 
-// ✅ Log Incoming Requests
+// 📝 Advanced Logging
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+
+// 🧼 Input Sanitization Middleware
 app.use((req, res, next) => {
-  console.log(`📥 ${req.method} ${req.originalUrl}`);
+  // Sanitize request body
+  if (req.body) {
+    Object.keys(req.body).forEach(key => {
+      if (typeof req.body[key] === "string") {
+        req.body[key] = req.body[key].trim();
+      }
+    });
+  }
   next();
 });
 
-// ✅ File Upload Configuration
+// 📁 File Upload Config
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (!file.mimetype.startsWith("image/")) {
-      return cb(new Error("Only image files (JPEG, PNG, etc.) are allowed."));
+      return cb(new Error("Only image files allowed."));
     }
     cb(null, true);
   }
 });
 
-// ✅ Authentication Middleware
+// 🔑 Auth Middleware
 const authenticateUser = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
@@ -70,17 +114,26 @@ const authenticateUser = async (req, res, next) => {
   }
 };
 
-// ✅ Register User
-app.post("/register", async (req, res) => {
+// 👥 Register
+app.post("/register", apiLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+    const { error } = registerSchema.validate(req.body);
+    if (error) return res.status(400).json({ error: error.details[0].message });
 
-    const existingUser = await prisma.user.findUnique({ where: { email } });
+    const { email, password } = req.body;
+    const sanitizedEmail = email.toLowerCase().trim();
+    const existingUser = await prisma.user.findUnique({ where: { email: sanitizedEmail } });
+
     if (existingUser) return res.status(409).json({ error: "Email already registered" });
 
     const hashedPassword = await bcrypt.hash(password, 12);
-    const newUser = await prisma.user.create({ data: { email, password: hashedPassword, role: "BUYER" } });
+    const newUser = await prisma.user.create({
+      data: { 
+        email: sanitizedEmail, 
+        password: hashedPassword, 
+        role: "BUYER" 
+      }
+    });
 
     res.status(201).json({ success: true, userId: newUser.id, email: newUser.email });
   } catch (error) {
@@ -89,57 +142,93 @@ app.post("/register", async (req, res) => {
   }
 });
 
-// ✅ User Login
-app.post("/login", async (req, res) => {
+// 🔐 Login
+app.post("/login", apiLimiter, async (req, res) => {
   try {
+    const { error } = loginSchema.validate(req.body);
+    if (error) return res.status(400).json({ error: error.details[0].message });
+
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+    const sanitizedEmail = email.toLowerCase().trim();
+    const user = await prisma.user.findUnique({ where: { email: sanitizedEmail } });
 
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || !(await bcrypt.compare(password, user.password))) return res.status(401).json({ error: "Invalid credentials" });
 
-    const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
 
-    res.json({ success: true, token, user: { id: user.id, email: user.email, role: user.role } });
+    // Update last login
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLogin: new Date() }
+    });
+
+    const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, {
+      expiresIn: "7d"
+    });
+
+    res.json({
+      success: true,
+      token,
+      user: { 
+        id: user.id, 
+        email: user.email, 
+        role: user.role, 
+        createdAt: user.createdAt,
+        lastLogin: updatedUser.lastLogin
+      }
+    });
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({ error: "Login failed" });
   }
 });
 
-// ✅ Add Product
+// 🔐 /me - Authenticated User Info
+app.get("/me", authenticateUser, (req, res) => {
+  const { id, email, role, createdAt, updatedAt, lastLogin } = req.user;
+  res.json({ id, email, role, createdAt, updatedAt, lastLogin });
+});
+
+// 🛒 Add Product
 app.post("/add-product", authenticateUser, upload.single("image"), async (req, res) => {
   try {
-    if (req.user.role !== "SELLER") return res.status(403).json({ error: "Seller account required" });
+    if (req.user.role !== "SELLER") {
+      return res.status(403).json({ error: "Seller account required" });
+    }
+
+    const { error } = productSchema.validate(req.body);
+    if (error) return res.status(400).json({ error: error.details[0].message });
 
     const { title, description, price, country } = req.body;
-    if (!title || !description || !price || !country) return res.status(400).json({ error: "All fields required" });
-
-    if (isNaN(price) || parseFloat(price) <= 0) return res.status(400).json({ error: "Invalid price format" });
-
     let imageUrl = null;
+
+    // Sanitize inputs
+    const sanitizedTitle = title.trim();
+    const sanitizedDescription = description.trim();
+    const sanitizedCountry = country.trim();
+
     if (req.file) {
-      try {
-        const uploadResult = await new Promise((resolve, reject) => {
-          const uploadStream = cloudinary.uploader.upload_stream({ folder: "products" }, (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          });
-          streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
-        });
-        imageUrl = uploadResult.secure_url;
-      } catch (uploadError) {
-        console.error("Cloudinary upload failed:", uploadError);
-        return res.status(500).json({ error: "Image upload failed" });
-      }
+      const uploadResult = await new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            folder: "products",
+            allowed_formats: ["jpg", "jpeg", "png"],
+            transformation: [{ width: 800, height: 600, crop: "limit" }]
+          },
+          (error, result) => (error ? reject(error) : resolve(result))
+        );
+        streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
+      });
+      imageUrl = uploadResult.secure_url;
     }
 
     const product = await prisma.product.create({
       data: {
-        title: title.trim(),
-        description: description.trim(),
+        title: sanitizedTitle,
+        description: sanitizedDescription,
         price: parseFloat(price),
-        country: country.trim(),
+        country: sanitizedCountry,
         images: imageUrl ? [imageUrl] : [],
         sellerId: req.user.id
       }
@@ -152,55 +241,56 @@ app.post("/add-product", authenticateUser, upload.single("image"), async (req, r
   }
 });
 
-// ✅ Get All Products
-app.get("/products", async (req, res) => {
-  try {
-    const products = await prisma.product.findMany();
-    res.json(products);
-  } catch (error) {
-    console.error("Products fetch error:", error);
-    res.status(500).json({ error: "Failed to fetch products" });
-  }
-});
-
-// ✅ Get Single Product by ID
-app.get("/products/:id", async (req, res) => {
-  try {
-    const product = await prisma.product.findUnique({ where: { id: req.params.id } });
-    if (!product) return res.status(404).json({ error: "Product not found" });
-    
-    res.json(product);
-  } catch (error) {
-    console.error("Product fetch error:", error);
-    res.status(500).json({ error: "Failed to fetch product" });
-  }
-});
-
-// ✅ Root Route for Health Check
-app.get("/", (req, res) => {
-  res.json({ message: "✅ Backend is running!" });
-});
-
-// ✅ Health Check Route
+// 🏥 Health Check
 app.get("/health", async (req, res) => {
   try {
-    await prisma.$queryRaw`SELECT 1`; // Simple DB check
-    res.json({ status: "ok", database: "connected" });
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ 
+      status: "ok", 
+      database: "connected",
+      version: process.env.npm_package_version,
+      environment: process.env.NODE_ENV || "development"
+    });
   } catch (error) {
-    res.json({ status: "error", database: "disconnected", details: error.message });
+    res.status(500).json({ 
+      status: "error", 
+      database: "disconnected",
+      error: error.message
+    });
   }
 });
 
-
-// ✅ Start Server
-const PORT = process.env.PORT || 8080; // 👈 use 8080 instead of 4000
-
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ Server running on http://localhost:${PORT}`);
+// 🧭 404 Handler
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found" });
 });
 
+// 🚨 Error Handling Middleware
+app.use((err, req, res, next) => {
+  console.error(`🚨 Error: ${err.stack}`);
+  res.status(500).json({ 
+    error: "Internal Server Error",
+    message: process.env.NODE_ENV === "development" ? err.message : "Something went wrong"
+  });
+});
 
-// ✅ Periodically log that the server is still running (optional)
-setInterval(() => console.log("✅ Server is still running..."), 60000);
+// 🔌 Graceful Shutdown
+process.on("SIGINT", async () => {
+  console.log("🛑 Shutting down gracefully...");
+  await prisma.$disconnect();
+  process.exit(0);
+});
 
+process.on("SIGTERM", async () => {
+  console.log("🛑 Shutting down gracefully...");
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+// 🚀 Start Server
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ Server running on http://localhost:${PORT}`);
+  console.log(`✅ Environment: ${process.env.NODE_ENV || "development"}`);
+});
 

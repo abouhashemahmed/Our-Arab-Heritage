@@ -1,126 +1,146 @@
-import Navbar from "../components/Navbar";
-import { useEffect, useState } from "react";
-import ProductCard from "../components/ProductCard";
+// pages/index.js
+import { useEffect, useMemo, useState } from "react";
+import Head from "next/head";
+import dynamic from "next/dynamic";
+import { useRouter } from "next/router";
+import Navbar from "@/components/Navbar";
+import * as Sentry from "@sentry/nextjs";
+
+const ProductCard = dynamic(() => import("@/components/ProductCard"), {
+  loading: () => <div className="h-64 bg-gray-100 rounded-lg animate-pulse" />
+});
 
 export default function Home() {
+  const router = useRouter();
   const [products, setProducts] = useState([]);
-  const [filteredProducts, setFilteredProducts] = useState([]);
-  const [country, setCountry] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [country, setCountry] = useState(router.query.country || "");
+  const [status, setStatus] = useState("idle");
+
+  const countries = useMemo(() => {
+    return [...new Set(products.map(p => p.country))].filter(Boolean).sort((a, b) => a.localeCompare(b));
+  }, [products]);
+
+  const filteredProducts = useMemo(() => {
+    if (!country) return products;
+    return products.filter(p => p.country.toLowerCase() === country.toLowerCase());
+  }, [country, products]);
 
   useEffect(() => {
-    console.log("📡 API URL:", process.env.NEXT_PUBLIC_API_URL); // ✅ Debugging API URL
-
+    const abortController = new AbortController();
+    
     async function fetchProducts() {
-      setLoading(true); // ✅ Start loading
-      setError(""); // ✅ Reset error state
+      setStatus("loading");
       try {
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products`, {
-          mode: "cors",
+          signal: abortController.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'public, max-age=3600'
+          }
         });
 
-        if (!res.ok) {
-          throw new Error(`Failed to fetch products. Status: ${res.status}`);
-        }
-
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        console.log("🔍 API Response →", data);
+        if (!Array.isArray(data) || !data.length) throw new Error("No products found");
+
         setProducts(data);
-        setFilteredProducts(data);
+        setStatus("success");
       } catch (err) {
-        console.error("❌ Error fetching products:", err);
-        setError("⚠️ Failed to load products. Please try again.");
-      } finally {
-        setLoading(false); // ✅ Stop loading
+        if (err.name !== "AbortError") {
+          console.error("Fetch error:", err);
+          Sentry.captureException(err);
+          setStatus("error");
+        }
       }
     }
 
     fetchProducts();
+    return () => abortController.abort();
   }, []);
 
-  // ✅ Filter products when the country changes
   useEffect(() => {
-    if (!country) {
-      setFilteredProducts(products);
-    } else {
-      setFilteredProducts(
-        products.filter((product) => product.country.toLowerCase() === country.toLowerCase())
-      );
-    }
-  }, [country, products]);
+    const query = country ? { country } : {};
+    router.replace({ query }, undefined, { shallow: true });
+  }, [country]);
 
   return (
     <>
+      <Head>
+        <title>Our Arab Heritage – Marketplace</title>
+        <meta name="description" content="Explore authentic Arab crafts and heritage products from across 22 countries. Filter by region and support local artisans." />
+        <meta property="og:image" content="/og-marketplace.jpg" />
+        <link rel="canonical" href="https://ourarabheritage.com/marketplace" />
+      </Head>
+
       <Navbar />
 
-      {/* ✅ Hero Section */}
-      <div className="bg-gray-100 py-20 text-center">
-        <h1 className="text-5xl font-bold text-gray-900">Discover Our Arab Heritage</h1>
-        <p className="text-lg text-gray-700 mt-4">
-          Explore handmade treasures from Arab artisans
-        </p>
-      </div>
+      <main className="bg-white dark:bg-gray-900">
+        <section className="bg-gradient-to-r from-arabicBlue to-heritageGold py-16 text-center">
+          <h1 className="text-4xl md:text-5xl font-bold text-white px-4">
+            Preserving Arab Heritage Through Craftsmanship
+          </h1>
+          <p className="text-gray-200 mt-4 max-w-2xl mx-auto">
+            Discover authentic handmade products from 22 Arab nations
+          </p>
+        </section>
 
-      {/* ✅ Country Filter Dropdown */}
-      <div className="container mx-auto px-6 py-4 text-center">
-        <label htmlFor="country" className="text-lg font-semibold mr-2">
-          Filter by Country:
-        </label>
-        <select
-          id="country"
-          className="border p-2 rounded-md"
-          value={country}
-          onChange={(e) => setCountry(e.target.value)}
-        >
-          <option value="">All Countries</option>
-          <option value="Algeria">Algeria</option>
-          <option value="Bahrain">Bahrain</option>
-          <option value="Comoros">Comoros</option>
-          <option value="Djibouti">Djibouti</option>
-          <option value="Egypt">Egypt</option>
-          <option value="Iraq">Iraq</option>
-          <option value="Jordan">Jordan</option>
-          <option value="Kuwait">Kuwait</option>
-          <option value="Lebanon">Lebanon</option>
-          <option value="Libya">Libya</option>
-          <option value="Mauritania">Mauritania</option>
-          <option value="Morocco">Morocco</option>
-          <option value="Oman">Oman</option>
-          <option value="Palestine">Palestine</option>
-          <option value="Qatar">Qatar</option>
-          <option value="Saudi Arabia">Saudi Arabia</option>
-          <option value="Somalia">Somalia</option>
-          <option value="Sudan">Sudan</option>
-          <option value="Syria">Syria</option>
-          <option value="Tunisia">Tunisia</option>
-          <option value="United Arab Emirates">United Arab Emirates</option>
-          <option value="Yemen">Yemen</option>
-        </select>
-      </div>
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-md mx-auto">
+            <label htmlFor="country-filter" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Filter by Country:
+            </label>
+            <select
+              id="country-filter"
+              className="w-full p-3 border rounded-lg dark:bg-gray-800 dark:border-gray-700"
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+            >
+              <option value="">Show All Countries</option>
+              {countries.map((country) => (
+                <option key={country} value={country}>
+                  {country}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
-      {/* ✅ Marketplace Section */}
-      <div className="container mx-auto px-6 py-10">
-        <h2 className="text-4xl font-bold text-center text-gray-800 mb-8">Marketplace</h2>
+        <section className="container mx-auto px-4 py-8" aria-labelledby="products-heading">
+          <h2 id="products-heading" className="sr-only">Products List</h2>
 
-        {/* ✅ Loading State */}
-        {loading && <p className="text-center text-gray-500">Loading products...</p>}
+          {status === 'error' && (
+            <div className="bg-red-50 text-red-700 p-4 rounded-lg text-center" role="alert">
+              Failed to load products. Please refresh or try again later.
+            </div>
+          )}
 
-        {/* ✅ Error Message */}
-        {error && <p className="text-center text-red-500">{error}</p>}
-
-        {/* ✅ Product Grid */}
-        {!loading && !error && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 mt-8">
-            {filteredProducts.length > 0 ? (
-              filteredProducts.map((product) => <ProductCard key={product.id} product={product} />)
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+            {status === 'loading' ? (
+              Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="h-96 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse" />
+              ))
+            ) : filteredProducts.length > 0 ? (
+              filteredProducts.map((product) => (
+                <ProductCard key={product.id} product={product} country={country} />
+              ))
             ) : (
-              <p className="text-center text-gray-500 col-span-full">No products available.</p>
+              <div className="col-span-full text-center py-12">
+                <p className="text-gray-500 dark:text-gray-400">
+                  No products found{country && ` in ${country}`}.
+                </p>
+                {country && (
+                  <button
+                    onClick={() => setCountry("")}
+                    className="mt-4 text-heritageGold hover:underline"
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
             )}
           </div>
-        )}
-      </div>
+        </section>
+      </main>
     </>
   );
 }
-
