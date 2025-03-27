@@ -1,17 +1,37 @@
 import { NextResponse } from 'next/server';
 
-// ✅ Use globalThis.crypto from Web Crypto API (Edge compatible)
+// ✅ Generate Edge-compatible, URL-safe base64 nonce
+function generateNonce() {
+  const array = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(array);
+  return btoa(String.fromCharCode(...array))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
 export function middleware(request) {
   try {
-    // Generate a secure random nonce using Web Crypto (Edge-safe)
-    const array = new Uint8Array(16);
-    globalThis.crypto.getRandomValues(array);
-    const nonce = Buffer.from(array).toString('base64');
-
+    const nonce = generateNonce();
     const response = NextResponse.next();
     const headers = new Headers(response.headers);
 
-    const existingCSP = headers.get('Content-Security-Policy') || '';
+    // ✅ Use existing CSP header or fallback
+    const fallbackCSP = `
+      default-src 'self';
+      script-src 'self' 'nonce-{NONCE}' 'strict-dynamic';
+      style-src 'self' 'unsafe-inline';
+      img-src 'self' data:;
+      font-src 'self';
+      connect-src 'self';
+      object-src 'none';
+      base-uri 'self';
+      report-uri ${process.env.CSP_REPORT_URI || '/csp-report'};
+    `.replace(/\n/g, ' ');
+
+    const existingCSP = headers.get('Content-Security-Policy') || fallbackCSP;
+
+    // ✅ Replace all {NONCE} with secure nonce
     const updatedCSP = existingCSP
       .replace(/{NONCE}/g, nonce)
       .replace(/\s{2,}/g, ' ')
@@ -23,14 +43,21 @@ export function middleware(request) {
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
-      headers,
+      headers: Object.fromEntries(headers.entries()),
     });
   } catch (error) {
     console.error('❌ CSP Middleware Error:', error);
-    return NextResponse.next();
+    return new NextResponse(null, {
+      headers: {
+        'Content-Security-Policy': "default-src 'self'; script-src 'self';"
+      }
+    });
   }
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|security.txt).*)'],
+  matcher: [
+    '/',
+    '/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)'
+  ],
 };
