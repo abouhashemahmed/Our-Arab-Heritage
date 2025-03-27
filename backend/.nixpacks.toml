@@ -1,0 +1,13 @@
+[phases.setup]
+nixPkgs = ["nodejs-18.x"]
+
+[phases.build]
+commands = [
+  "npm install",
+  "npx prisma generate",
+  "npx prisma migrate deploy"
+]
+
+[start]
+command = "node server.js"
+
